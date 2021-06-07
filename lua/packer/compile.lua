@@ -114,7 +114,12 @@ end
 
 local try_loadstring = [[
 local function try_loadstring(s, component, name)
-  local success, result = pcall(loadstring(s))
+  local success, result 
+  if type(s) == 'string' then
+    success, result = pcall(loadstring(s))
+  elseif type(s) == 'function' then
+    success, result = pcall(s)
+  end
   if not success then
     vim.schedule(function()
       vim.api.nvim_notify('packer.nvim: Error running ' .. component .. ' for ' .. name .. ': ' .. result, vim.log.levels.ERROR, {})
@@ -164,6 +169,83 @@ local function timed_chunk(chunk, name, output_table)
   return output_table
 end
 
+-- Get function source code if possible
+local files_cache = {}
+
+--  Reads the file_path and caches it's contents for future use
+local function cache_file(file_path)
+  local stat = vim.loop.fs_stat(file_path)
+  if not stat then
+    return false
+  end
+  if not files_cache[file_path] or files_cache[file_path].last_mtime < stat.mtime.sec then
+    files_cache[file_path] = {
+      data = {},
+      last_mtime = vim.loop.fs_stat(file_path).mtime.sec,
+    }
+    local file = io.open(file_path, 'r')
+    local file_data = file:read '*a'
+    files_cache[file_path].data = vim.split(file_data, '\n')
+    file:close()
+  end
+  return true
+end
+
+-- Returns table containing lines from start to end in file_path
+local function fget_lines(file_path, start, stop)
+  if not cache_file(file_path) then
+    error('file ' .. tostring(file_path) .. ' not found')
+  end
+  if start < 1 or stop > #files_cache[file_path].data then
+    error(fmt('Range %d-%d in file %s is out of bounds', start, stop, file_path))
+  end
+  local lines = vim.list_slice(files_cache[file_path].data, start, stop)
+  return lines
+end
+
+-- Returns funcs source of string.dump value
+local function get_function_source(func)
+  if type(func) ~= 'function' then
+    return ''
+  end
+  local src_data = debug.getinfo(func, 'S')
+  if not src_data or not src_data.short_src or not src_data.linedefined or not src_data.lastlinedefined then
+    return vim.inspect(string.dump(func))
+  end
+  local ok, src = pcall(fget_lines, src_data.source:sub(2), src_data.linedefined, src_data.lastlinedefined)
+  if ok and src then
+    local len = #src
+    src[1] = src[1]:sub(src[1]:find 'function(.*)')
+    src[len] = src[len]:sub(1, src[len]:find 'end' + 2)
+    return table.concat(src, '\n')
+  end
+  if not ok then
+    vim.api.nvim_err_writeln(src)
+  end
+  return vim.inspect(string.dump(func))
+end
+--- Result of loaders can contain funcrion source codes in keys like config
+--- This function removes the quotations(") surrounding function so they
+--- are represented as actual functions in packer_compiled
+--@param data (string) stringified loaders
+--@return string data with functions unquoted
+local function unwrap_function_src(data)
+  local func_start, func_body, func_end, pos
+  pos = 1
+  repeat
+    func_start = data:find([=[["']function.-end["']]=], pos)
+    func_body = data:match([=[["'](function.-end)["']]=], pos)
+    if not func_start or not func_body then
+      break
+    end
+    func_end = func_start + #func_body + 1
+    func_body = func_body:gsub('\\n', '\n'):gsub('\\"', '"')
+    data = table.concat { data:sub(1, func_start - 1), func_body, data:sub(func_end + 1) }
+    pos = func_end
+  until false
+  return data
+end
+
 local function dump_loaders(loaders)
   local result = vim.deepcopy(loaders)
   for k, _ in pairs(result) do
@@ -174,12 +256,12 @@ local function dump_loaders(loaders)
     result[k].only_sequence = nil
   end
 
-  return vim.inspect(result)
+  return unwrap_function_src(vim.inspect(result))
 end
 
 local function make_try_loadstring(item, chunk, name)
-  local bytecode = string.dump(item, true)
-  local executable_string = 'try_loadstring(' .. vim.inspect(bytecode) .. ', "' .. chunk .. '", "' .. name .. '")'
+  local bytecode = get_function_source(item)
+  local executable_string = 'try_loadstring(' .. bytecode .. ', "' .. chunk .. '", "' .. name .. '")'
   return executable_string, bytecode
 end
 
