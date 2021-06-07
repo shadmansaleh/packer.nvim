@@ -127,7 +127,7 @@ packer.make_commands = function()
   vim.cmd [[command! -nargs=* -complete=customlist,v:lua.require'packer'.plugin_complete PackerUpdate lua require('packer').update(<f-args>)]]
   vim.cmd [[command! -nargs=* -complete=customlist,v:lua.require'packer'.plugin_complete PackerSync lua require('packer').sync(<f-args>)]]
   vim.cmd [[command! PackerClean             lua require('packer').clean()]]
-  vim.cmd [[command! -nargs=* PackerCompile  lua require('packer').compile(<q-args>)]]
+  vim.cmd(string.format([[command! -nargs=* %s  lua require('packer').compile(<q-args>)]], config.compile_path == '' and 'PackerRefresh' or 'PackerCompile'))
   vim.cmd [[command! PackerStatus            lua require('packer').status()]]
   vim.cmd [[command! PackerProfile           lua require('packer').profile_output()]]
   vim.cmd [[command! -bang -nargs=+ -complete=customlist,v:lua.require'packer'.loader_complete PackerLoad lua require('packer').loader(<f-args>, '<bang>' == '!')]]
@@ -332,7 +332,7 @@ end)
 --- Hook to fire events after packer compilation
 packer.on_compile_done = function()
   vim.cmd [[doautocmd User PackerCompileDone]]
-  vim.notify('packer.compile: Complete', vim.log.levels.INFO, { title = 'packer.nvim' })
+  vim.notify(string.format('packer.%s: Complete', config.compile_path == '' and 'refresh' or 'compile'), vim.log.levels.INFO, { title = 'packer.nvim' })
 end
 
 --- Clean operation:
@@ -685,7 +685,8 @@ packer.compile = function(raw_args, move_plugins)
     end
     local args = parse_args(raw_args)
     local output_path = args.output_path or config.compile_path
-    local output_lua = vim.fn.fnamemodify(output_path, ':e') == 'lua'
+    local live = output_path == ''
+    local output_lua = live or vim.fn.fnamemodify(output_path, ':e') == 'lua'
     local should_profile = args.profile
     -- the user might explicitly choose for this value to be false in which case
     -- an or operator will not work
@@ -694,13 +695,15 @@ packer.compile = function(raw_args, move_plugins)
     end
     refresh_configs(plugins)
     -- NOTE: we copy the plugins table so the in memory value is not mutated during compilation
-    local compiled_loader = compile(vim.deepcopy(plugins), output_lua, should_profile)
+    local compiled_loader = compile(vim.deepcopy(plugins), output_lua, should_profile, live)
+    if not live then
     output_path = vim.fn.expand(output_path)
     vim.fn.mkdir(vim.fn.fnamemodify(output_path, ':h'), 'p')
     local output_file = io.open(output_path, 'w')
     output_file:write(compiled_loader)
     output_file:close()
-    if config.auto_reload_compiled then
+    end
+    if live or config.auto_reload_compiled then
       local configs_to_run = {}
       if _G.packer_plugins ~= nil then
         for plugin_name, plugin_info in pairs(_G.packer_plugins) do
@@ -710,7 +713,9 @@ packer.compile = function(raw_args, move_plugins)
         end
       end
 
+      if live then loadstring(compiled_loader)() else
       vim.cmd('source ' .. output_path)
+      end
       for plugin_name, plugin_config in pairs(configs_to_run) do
         for _, config_line in ipairs(plugin_config) do
           local success, err = pcall(loadstring(config_line))
@@ -847,6 +852,11 @@ packer.startup = function(spec)
     packer.use(user_plugins)
   end
 
+  if config.compile_path == '' then
+    local compile = require_and_configure 'compile'
+    manage_all_plugins()
+    loadstring(compile(vim.deepcopy(plugins), true, config.profile.enable, true))()
+  end
   return packer
 end
 
