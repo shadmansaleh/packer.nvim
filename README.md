@@ -56,7 +56,7 @@ Have a problem or idea? Make an [issue](https://github.com/wbthomason/packer.nvi
 - Support for local plugins
 
 ## Requirements
-- You need to be running Neovim v0.5.0+; `packer` makes use of extmarks and other newly-added Neovim
+- **You need to be running Neovim v0.5.0+**; `packer` makes use of extmarks and other newly-added Neovim
   features.
 - If you are on Windows 10, you need developer mode enabled in order to use local plugins (creating
   symbolic links requires admin privileges on Windows - credit to @TimUntersberger for this note)
@@ -192,10 +192,17 @@ end)
 ```
 
 You can configure Neovim to automatically run `:PackerCompile` whenever `plugins.lua` is updated with an autocommand:
+
 ```
-autocmd BufWritePost plugins.lua PackerCompile
+autocmd BufWritePost plugins.lua source <afile> | PackerCompile
 ```
+
 This autocommand can be placed in your `init.vim`, or any other startup file as per your setup.
+Placing this in `plugins.lua` could look like this:
+
+```lua
+vim.cmd([[autocmd BufWritePost plugins.lua source <afile> | PackerCompile]])
+```
 
 ## Bootstrapping
 
@@ -220,8 +227,8 @@ The above snippets give some examples of `packer` features and use. Examples inc
 
 - My dotfiles:
   - [Specification file](https://github.com/wbthomason/dotfiles/blob/linux/neovim/.config/nvim/lua/plugins.lua)
-  - [Loading file](https://github.com/wbthomason/dotfiles/blob/linux/neovim/.config/nvim/plugin/plugins.vim)
-  - [Generated lazy-loader file](https://github.com/wbthomason/dotfiles/blob/linux/neovim/.config/nvim/plugin/packer_load.vim)
+  - [Loading file](https://github.com/wbthomason/dotfiles/blob/linux/neovim/.config/nvim/lua/plugins.lua)
+  - [Generated lazy-loader file](https://github.com/wbthomason/dotfiles/blob/linux/neovim/.config/nvim/plugin/packer_compiled.lua)
 - An example using the `startup` method: [tjdevries](https://github.com/tjdevries/config_manager/blob/master/xdg_config/nvim/lua/tj/plugins.lua)
     - Using this method, you do not require a "loading" file. You can simply `lua require('plugins')` from your `init.vim`
 
@@ -251,7 +258,7 @@ default configuration values (and structure of the configuration table) are:
 {
   ensure_dependencies   = true, -- Should packer install plugin dependencies?
   package_root   = util.join_paths(vim.fn.stdpath('data'), 'site', 'pack'),
-  compile_path = util.join_paths(vim.fn.stdpath('config'), 'plugin', 'packer_compiled.vim'),
+  compile_path = util.join_paths(vim.fn.stdpath('config'), 'plugin', 'packer_compiled.lua'),
   plugin_package = 'packer', -- The default package for plugins
   max_jobs = nil, -- Limit the number of simultaneous jobs. nil means no limit
   auto_clean = true, -- During sync(), remove unused plugins
@@ -264,20 +271,21 @@ default configuration values (and structure of the configuration table) are:
   git = {
     cmd = 'git', -- The base command for git operations
     subcommands = { -- Format strings for git subcommands
-      update         = '-C %s pull --ff-only --progress --rebase=false',
-      install        = 'clone %s %s --depth %i --no-single-branch --progress',
-      fetch          = '-C %s fetch --depth 999999 --progress',
-      checkout       = '-C %s checkout %s --',
-      update_branch  = '-C %s merge --ff-only @{u}',
-      current_branch = '-C %s branch --show-current',
-      diff           = '-C %s log --color=never --pretty=format:FMT --no-show-signature HEAD@{1}...HEAD',
+      update         = 'pull --ff-only --progress --rebase=false',
+      install        = 'clone --depth %i --no-single-branch --progress',
+      fetch          = 'fetch --depth 999999 --progress',
+      checkout       = 'checkout %s --',
+      update_branch  = 'merge --ff-only @{u}',
+      current_branch = 'branch --show-current',
+      diff           = 'log --color=never --pretty=format:FMT --no-show-signature HEAD@{1}...HEAD',
       diff_fmt       = '%%h %%s (%%cr)',
-      get_rev        = '-C %s rev-parse --short HEAD',
-      get_msg        = '-C %s log --color=never --pretty=format:FMT --no-show-signature HEAD -n 1',
-      submodules     = '-C %s submodule update --init --recursive --progress'
+      get_rev        = 'rev-parse --short HEAD',
+      get_msg        = 'log --color=never --pretty=format:FMT --no-show-signature HEAD -n 1',
+      submodules     = 'submodule update --init --recursive --progress'
     },
     depth = 1, -- Git clone depth
     clone_timeout = 60, -- Timeout, in seconds, for git clones
+    default_url_format = 'https://github.com/%s' -- Lua format string used for "aaa/bbb" style plugins
   },
   display = {
     non_interactive = false, -- If true, disable display windows for all operations
@@ -301,6 +309,7 @@ default configuration values (and structure of the configuration table) are:
   luarocks = {
     python_cmd = 'python' -- Set the python command to use for running hererocks
   },
+  log = { level = 'warn' }, -- The default print log level. One of: "trace", "debug", "info", "warn", "error", "fatal".
   profile = {
     enable = false,
     threshold = 1, -- integer in milliseconds, plugins which load faster than this won't be shown in profile output
