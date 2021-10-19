@@ -682,7 +682,7 @@ packer.compile = function(raw_args, move_plugins)
     end
     local args = parse_args(raw_args)
     local output_path = args.output_path or config.compile_path
-    local output_lua = vim.fn.fnamemodify(output_path, ':e') == 'lua'
+    local output_lua = output_path == '' or vim.fn.fnamemodify(output_path, ':e') == 'lua'
     local should_profile = args.profile
     -- the user might explicitly choose for this value to be false in which case
     -- an or operator will not work
@@ -692,12 +692,14 @@ packer.compile = function(raw_args, move_plugins)
     refresh_configs(plugins)
     -- NOTE: we copy the plugins table so the in memory value is not mutated during compilation
     local compiled_loader = compile(vim.deepcopy(plugins), output_lua, should_profile)
-    output_path = vim.fn.expand(output_path)
-    vim.fn.mkdir(vim.fn.fnamemodify(output_path, ':h'), 'p')
-    local output_file = io.open(output_path, 'w')
-    output_file:write(compiled_loader)
-    output_file:close()
-    if config.auto_reload_compiled then
+    if output_path ~= '' then
+      output_path = vim.fn.expand(output_path)
+      vim.fn.mkdir(vim.fn.fnamemodify(output_path, ':h'), 'p')
+      local output_file = io.open(output_path, 'w')
+      output_file:write(compiled_loader)
+      output_file:close()
+    end
+    if output_path == '' or config.auto_reload_compiled then
       local configs_to_run = {}
       if _G.packer_plugins ~= nil then
         for plugin_name, plugin_info in pairs(_G.packer_plugins) do
@@ -707,7 +709,11 @@ packer.compile = function(raw_args, move_plugins)
         end
       end
 
-      vim.cmd('source ' .. output_path)
+      if output_path == '' then
+        loadstring(compiled_loader)()
+      else
+        vim.cmd('source ' .. output_path)
+      end
       for plugin_name, plugin_config in pairs(configs_to_run) do
         for _, config_line in ipairs(plugin_config) do
           local success, err = pcall(loadstring(config_line))
@@ -834,7 +840,7 @@ packer.startup = function(spec)
   packer.reset()
 
   if user_func then
-    setfenv(user_func, vim.tbl_extend('force', getfenv(), { use = packer.use, use_rocks = packer.use_rocks }))
+    setfenv(user_func, vim.tbl_extend('force', getfenv(user_func), { use = packer.use, use_rocks = packer.use_rocks }))
     local status, err = pcall(user_func, packer.use, packer.use_rocks)
     if not status then
       log.error('Failure running setup function: ' .. vim.inspect(err))
@@ -844,6 +850,11 @@ packer.startup = function(spec)
     packer.use(user_plugins)
   end
 
+  if config.compile_path == '' then
+    local compile = require_and_configure 'compile'
+    manage_all_plugins()
+    loadstring(compile(vim.deepcopy(plugins), true, config.profile.enable, true))()
+  end
   return packer
 end
 
