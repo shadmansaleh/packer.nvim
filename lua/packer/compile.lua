@@ -471,6 +471,16 @@ local function make_loaders(_, plugins, output_lua, should_profile, live)
     end
   end
 
+  local start_plugin_load = {}
+  for name, plugin in pairs(plugins) do
+    if not plugin.opt then
+      timed_chunk(
+        fmt('require("packer.load")({"%s"}, {}, _G.packer_plugins)', name),
+        'Loading plugin '..name,
+        start_plugin_load
+      )
+    end
+  end
   local ft_aucmds = {}
   for ft, names in pairs(fts) do
     table.insert(
@@ -684,6 +694,11 @@ local function make_loaders(_, plugins, output_lua, should_profile, live)
   timed_chunk(luarocks.generate_path_setup(), 'Luarocks path setup', result)
   timed_chunk(try_loadstring, 'try_loadstring definition', result)
   timed_chunk(dump_loaders(loaders, live), 'Defining packer_plugins', result)
+  -- load start plugins
+  if next(start_plugin_load) then
+    vim.list_extend(result, start_plugin_load)
+  end
+
   -- Then the runtimepath line
   if rtp_line ~= '' then
     table.insert(result, '-- Runtimepath customization')

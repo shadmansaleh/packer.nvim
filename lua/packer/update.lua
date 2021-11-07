@@ -26,19 +26,11 @@ end
 local function fix_plugin_type(plugin, results, fs_state)
   local from
   local to
-  if plugin.opt then
-    from = util.join_paths(config.start_dir, plugin.short_name)
-    to = util.join_paths(config.opt_dir, plugin.short_name)
-    fs_state.opt[to] = true
-    fs_state.start[from] = nil
-    fs_state.missing[plugin.short_name] = nil
-  else
-    from = util.join_paths(config.opt_dir, plugin.short_name)
-    to = util.join_paths(config.start_dir, plugin.short_name)
-    fs_state.start[to] = true
-    fs_state.opt[from] = nil
-    fs_state.missing[plugin.short_name] = nil
-  end
+  from = util.join_paths(util.join_paths(config.pack_dir, 'start'), plugin.short_name)
+  to = util.join_paths(util.join_paths(config.pack_dir, 'opt'), plugin.short_name)
+  fs_state.opt[to] = true
+  fs_state.start[from] = nil
+  fs_state.missing[plugin.short_name] = nil
 
   -- NOTE: If we stored all plugins somewhere off-package-path and used symlinks to put them in the
   -- right directories, this could be lighter-weight
@@ -58,7 +50,7 @@ local function fix_plugin_types(plugins, plugin_names, results, fs_state)
   -- NOTE: This function can only be run on plugins already installed
   for _, v in ipairs(plugin_names) do
     local plugin = plugins[v]
-    local install_dir = util.join_paths(plugin.opt and config.start_dir or config.opt_dir, plugin.short_name)
+    local install_dir = util.join_paths(plugin.opt and config.opt_dir or util.join_paths(config.pack_dir, 'start'), plugin.short_name)
     if vim.loop.fs_stat(install_dir) ~= nil then
       fix_plugin_type(plugin, results, fs_state)
     end
@@ -69,8 +61,6 @@ end
 local function update_plugin(plugin, display_win, results)
   local plugin_name = util.get_plugin_full_name(plugin)
   -- TODO: This will have to change when separate packages are implemented
-  local install_path = util.join_paths(config.pack_dir, plugin.opt and 'opt' or 'start', plugin.short_name)
-  plugin.install_path = install_path
   return async(function()
     if plugin.lock or plugin.disable then
       return

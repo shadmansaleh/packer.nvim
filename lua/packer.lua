@@ -110,7 +110,7 @@ packer.init = function(user_config)
   config.package_root, _ = string.gsub(config.package_root, util.get_separator() .. '$', '', 1)
   config.pack_dir = join_paths(config.package_root, config.plugin_package)
   config.opt_dir = join_paths(config.pack_dir, 'opt')
-  config.start_dir = join_paths(config.pack_dir, 'start')
+  config.start_dir = config.opt_dir
   if #vim.api.nvim_list_uis() == 0 then
     config.display.non_interactive = true
   end

@@ -113,12 +113,12 @@ plugin_utils.list_installed_plugins = function()
     end
   end
 
-  local start_dir_handle = vim.loop.fs_opendir(config.start_dir, nil, 50)
+  local start_dir_handle = vim.loop.fs_opendir(util.join_paths(config.pack_dir, 'start'), nil, 50)
   if start_dir_handle then
     local start_dir_items = vim.loop.fs_readdir(start_dir_handle)
     while start_dir_items do
       for _, item in ipairs(start_dir_items) do
-        start_plugins[util.join_paths(config.start_dir, item.name)] = true
+        start_plugins[util.join_paths(util.join_paths(config.pack_dir, 'start'), item.name)] = true
       end
 
       start_dir_items = vim.loop.fs_readdir(start_dir_handle)
@@ -141,7 +141,7 @@ plugin_utils.find_missing_plugins = function(plugins, opt_plugins, start_plugins
       local plugin = plugins[plugin_name]
       if not plugin.disable then
         local plugin_path = util.join_paths(config[plugin.opt and 'opt_dir' or 'start_dir'], plugin.short_name)
-        local plugin_installed = (plugin.opt and opt_plugins or start_plugins)[plugin_path]
+        local plugin_installed = opt_plugins[plugin_path]
 
         await(a.main)
         local guessed_type = plugin_utils.guess_dir_type(plugin_path)
