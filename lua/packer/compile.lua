@@ -165,7 +165,7 @@ local function timed_chunk(chunk, name, output_table)
   return output_table
 end
 
-local function dump_loaders(loaders)
+local function dump_loaders(loaders, live)
   local result = vim.deepcopy(loaders)
   for k, _ in pairs(result) do
     if result[k].only_setup or result[k].only_sequence then
@@ -175,10 +175,14 @@ local function dump_loaders(loaders)
     result[k].only_sequence = nil
   end
 
-  return vim.inspect(result)
+  if live then _G.packer_plugins = result; return '' end
+  return '_G.packer_plugins = '..vim.inspect(result)..'\n'
 end
 
-local function make_try_loadstring(item, chunk, name)
+local function make_try_loadstring(item, chunk, name, pos, live)
+  if live then
+    return fmt([[try_loadstring('_G.packer_plugins["%s"]["%s"]%s()', '%s', '%s')]], name, chunk, pos and '['..pos..']' or '', chunk, name), item
+  end
   local bytecode = string.dump(item, true)
   local executable_string = 'try_loadstring(' .. vim.inspect(bytecode) .. ', "' .. chunk .. '", "' .. name .. '")'
   return executable_string, bytecode
@@ -241,7 +245,7 @@ local function detect_bufread(plugin_path)
   return false
 end
 
-local function make_loaders(_, plugins, output_lua, should_profile)
+local function make_loaders(_, plugins, output_lua, should_profile, live)
   local loaders = {}
   local configs = {}
   local rtps = {}
@@ -269,7 +273,7 @@ local function make_loaders(_, plugins, output_lua, should_profile)
           local executable_string = config_item
           if type(config_item) == 'function' then
             local bytecode
-            executable_string, bytecode = make_try_loadstring(config_item, 'config', name)
+            executable_string, bytecode = make_try_loadstring(config_item, 'config', name, i, live)
             plugin.config[i] = bytecode
           end
 
@@ -302,13 +306,15 @@ local function make_loaders(_, plugins, output_lua, should_profile)
         if type(plugin.setup) ~= 'table' then
           plugin.setup = { plugin.setup }
         end
+        local load_setup = {}
         for i, setup_item in ipairs(plugin.setup) do
           if type(setup_item) == 'function' then
-            plugin.setup[i], _ = make_try_loadstring(setup_item, 'setup', name)
+            plugin.setup[i], load_setup[i] = make_try_loadstring(setup_item, 'setup',  name, i, live)
           end
         end
 
         loaders[name].only_setup = plugin.manual_opt == nil
+        loaders[name].setup = load_setup
         setup[name] = plugin.setup
       end
 
@@ -322,10 +328,10 @@ local function make_loaders(_, plugins, output_lua, should_profile)
           plugin.cond = { plugin.cond }
         end
 
-        for _, condition in ipairs(plugin.cond) do
+        for i, condition in ipairs(plugin.cond) do
           loaders[name].cond = {}
           if type(condition) == 'function' then
-            _, condition = make_try_loadstring(condition, 'condition', name)
+            _, condition = make_try_loadstring(condition, 'condition', name, i, live)
           elseif type(condition) == 'string' then
             condition = 'return ' .. condition
           end
@@ -694,7 +700,7 @@ local function make_loaders(_, plugins, output_lua, should_profile)
   table.insert(result, profile_output)
   timed_chunk(luarocks.generate_path_setup(), 'Luarocks path setup', result)
   timed_chunk(try_loadstring, 'try_loadstring definition', result)
-  timed_chunk(fmt('_G.packer_plugins = %s\n', dump_loaders(loaders)), 'Defining packer_plugins', result)
+  timed_chunk(dump_loaders(loaders, live), 'Defining packer_plugins', result)
   -- Then the runtimepath line
   if rtp_line ~= '' then
     table.insert(result, '-- Runtimepath customization')
